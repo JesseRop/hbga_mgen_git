@@ -14,6 +14,7 @@ library(kableExtra)
 library(stargazer)
 library(emmeans)
 library(haven)
+library(lubridate)
 
 setwd("C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/r_analysis/abo_fut2_fut3_malariagen")
 
@@ -30,30 +31,35 @@ mgen_bm_sample = mgen_bm_sample %>% mutate(
   mal_sub_status = factor(mal_sub_status, levels = c("CONTROL", "BACT","BOTH","CM", "D","OTHER","SMA")),
   bact_sub_status = factor(bact_sub_status, levels = c("CONTROL", "ACI","BHS","D","ECOLI","HIB","MAL","NTS","PNEUMO","STAPH")))
 
-mgen_bm_sample_no_dtypes = mgen_bm_sample[-1,]
-mgen_bm_sample_no_dtypes[] = lapply(mgen_bm_sample_no_dtypes, function(x) if(is.factor(x)) factor(x) else x)
-mgen_bm_sample_no_dtypes[] = lapply(mgen_bm_sample_no_dtypes, function(x) if(is.factor(x)) as.factor(as.numeric((x))) else x)
-mgen_bm_plink = rbind(mgen_bm_sample[1,], mgen_bm_sample_no_dtypes)
-mgen_bm_plink[] = lapply(mgen_bm_plink, function(x) if(is.factor(x)) factor(x) else x)
+##Writing a sample file for snptest analysis input
+mgen_bm_sample[-1,] %>%
+  lapply(., function(x) if(is.factor(x)) as.factor(as.numeric((x))) else x) %>% 
+  as.data.frame() %>%
+  rbind(mgen_bm_sample[1,], .) %>%
+  #lapply(., function(x) if(is.factor(x)) factor(x) else x) %>%
+  write.table(., "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/from local F/malariagen_analysis/Kenya_GWAS_bact_mal_plink.sample", quote = F, row.names = F)
 
-write.table(mgen_bm_plink, "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/from local F/malariagen_analysis/Kenya_GWAS_bact_mal_plink.sample", quote = F, row.names = F)
+##Writing a sample file for plink analysis input
+mgen_bm_sample[-1,] %>%
+  lapply(., function(x) if(is.factor(x)) as.factor(as.numeric((x))) else x) %>% 
+  as.data.frame() %>%
+  rename("FID" = "ID_1", "IID" = "ID_2") %>%
+  write.table(., "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/from local F/malariagen_analysis/Kenya_GWAS_bact_mal_pheno_plink.txt", quote = F, row.names = F)
 
-##converting the .sample plink file to a phenotype plink file
+##Reading in mgen exclusion list and removing duplicates
+mgen_exclusion_list = read.table("C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/from local F/malariagen_analysis/MGEN_sex_mismatch.excl", header = F, stringsAsFactors = F) %>% 
+  filter(!(duplicated(V1)))
 
-mgen_bm_pheno_plink = mgen_bm_plink
-colnames(mgen_bm_pheno_plink)[1] = "FID"
-colnames(mgen_bm_pheno_plink)[2] = "IID"
+##Mgen exclusion list for plink
+mgen_exclusion_list_plink = mgen_exclusion_list %>%
+  mutate(V2 = V1) %>%
+  rename(FID = V1, IID = V2) %>% 
+  write.table(., "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/from local F/malariagen_analysis/MGEN_sex_mismatch_plink", quote = F, row.names = F)
 
-mgen_bm_pheno_plink = mgen_bm_pheno_plink[-1,]
-
-mgen_bm_pheno_plink = as.data.frame(lapply(mgen_bm_pheno_plink, function(x) if(is.factor(x)) factor(x) else x))
-write.table(mgen_bm_pheno_plink, "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/from local F/malariagen_analysis/Kenya_GWAS_bact_mal_pheno_plink.txt", quote = F, row.names = F)
 
 ##Creating dummy variables to enable R and plink analysis
-
-mgen_bm_pheno_plink_dummy = as.data.frame(mgen_bm_pheno_plink)
-
-mgen_bm_pheno_plink_dummy = mgen_bm_pheno_plink_dummy %>%
+mgen_bm_pheno_plink_dummy = mgen_bm_sample[-1,] %>%
+  as.data.frame() %>%
   mutate(
     cc_status_bact = case_when(cc_status == "CONTROL" ~ 0, cc_status == "BACT" ~ 1),
     cc_status_mal = case_when(cc_status == "CONTROL" ~ 0, cc_status == "MAL" ~ 1),
@@ -72,36 +78,27 @@ mgen_bm_pheno_plink_dummy = mgen_bm_pheno_plink_dummy %>%
     bact_sub_status_staph = case_when(bact_sub_status == "CONTROL" ~ 0, bact_sub_status == "STAPH" ~ 1)
   )
 
-
-
+##Writing out mgen file with dummy variables
 write.table(mgen_bm_pheno_plink_dummy, "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/from local F/malariagen_analysis/Kenya_GWAS_bact_mal_dummy_pheno_plink.txt", quote = F, row.names = F)
 
-##fORMATING mgen exclusion list to have an additional family ID column with similar ID as individual ID. 11/9/2018
-
-mgen_exclusion_list = read.table("C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/from local F/malariagen_analysis/MGEN_sex_mismatch.excl", header = F, stringsAsFactors = F)
-mgen_exclusion_list = mgen_exclusion_list[!(duplicated(mgen_exclusion_list$V1)),]
-mgen_exclusion_list_plink = cbind(mgen_exclusion_list, mgen_exclusion_list)
-colnames(mgen_exclusion_list_plink) [1] = 'FID'
-colnames(mgen_exclusion_list_plink) [2] = 'IID'
-
-write.table(mgen_exclusion_list_plink, "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/from local F/malariagen_analysis/MGEN_sex_mismatch_plink", quote = F, row.names = F)
 
 ##reading in Sophie's and caro's datasets
-su_sm = read.csv("C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/malariagen_data_raw/SM_Data.csv", stringsAsFactors = F, na.strings = c("NA", "", ".", "<NA>"))
+su_sm = read_csv("C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/malariagen_data_raw/SM_Data.csv", na = c("NA", "", ".", "<NA>"))
 
-su_dset = read.csv("C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/malariagen_data_raw/severe_malaria_final_APR2015_formated_to_remove_spaces.csv", stringsAsFactors = F, na.strings = c("NA", "", ".", "<NA>")) %>% 
+su_dset = read_csv("C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/malariagen_data_raw/severe_malaria_final_APR2015_formated_to_remove_spaces.csv", na = c("NA", "", ".", "<NA>")) %>% 
   mutate(serial_scode = coalesce(as.character(serial), as.character(source_code_old)))
 
-cn_dset_raw = read_csv("C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/malariagen_data_raw/sm_bact_GWAS_combine06042019.csv", na = c("NA", "", ".", "<NA>")) %>% 
+cn_dset_raw = read_csv("C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/malariagen_data_raw/sm_bact_GWAS_combine06042019.csv", na = c("NA", "", ".", "<NA>"), col_types = cols(Kenyan_ID = col_character())) %>% 
   mutate(Kenyan_ID_raw = Kenyan_ID,
-         Kenyan_ID = gsub("^.._", "", Kenyan_ID) %>% as.character())
+         Kenyan_ID = gsub("^.._", "", Kenyan_ID))
 
 length(unique(cn_dset_raw$ID_2)) ##No duplicates for ID_2
 
 ##merging Jame's sample file with caro's and Sophie's dataset (after removing those with missing Kenyan IDs) using genotyping IDs
 bm_mgen_su_dset = cn_dset_raw %>% 
   select(c("ID_2", "Oxford_ID", "Kenyan_ID", "Study", "missing_kenyanid", "Kenyan_ID_raw")) %>%
-  left_join(mgen_bm_pheno_plink_dummy, ., by = c("IID" = "ID_2")) %>% 
+  left_join(mgen_bm_pheno_plink_dummy, ., by = "ID_2") %>% 
+  rename(IID = ID_2) %>%
   left_join(., su_dset %>% filter(!is.na(serial_scode)), by = c("Kenyan_ID" = "serial_scode" ))
 
 ##merging in thal genotypes from Gideon
@@ -126,14 +123,52 @@ bm_mgen_su_dset = bm_mgen_su_dset %>%
          thall_type = factor(thall_type, levels = c("Norm", "Het", "Homo"))
   )
 
-#merging and counting strict syndromes
-bm_mgen_su_dset = read_csv("C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/malariagen_data_raw/gideon_thal_extra_clinical_data/abo_fut2_genopheno_missing_strict_case_GN.csv", na = c("NA", "", ".", "<NA>", "NO RESULTS")) %>% 
-  select(c("iid", "bacterium1", "bacterium2", "bacterium3","gram_pos", "strep_pneumo","staph_aureus","grp_a_strep","grp_b_strep", "nts", "gp_other", "h_flu", "h_fluB", "h_flu_other", "acineto", "pseudomonas", "klebs", "gn_other", "anaemia", "resp_distress","resp_irregular", "resp_rate", "resp_deep", "severe_malaria", "u_malaria", "c_malaria", "ad_anaemia","ad_fever","ad_malaria", "dx1", "dx2", "dx3")) %>%
-  left_join(bm_mgen_su_dset, ., by = c("IID" = "iid")) %>%
-  mutate(resp_distress_gn = na_if(resp_distress, "0"),
-         rd_su_gn = coalesce(rd, resp_distress_gn))
+##Coalescing function from https://alistaire.rbind.io/blog/coalescing-joins/
+coalesce_join <- function(x, y, 
+                          by = NULL, suffix = c(".x", ".y"), 
+                          join = dplyr::full_join, ...) {
+  joined <- join(x, y, by = by, suffix = suffix, ...)
+  # names of desired output
+  cols <- union(names(x), names(y))
+  
+  to_coalesce <- names(joined)[!names(joined) %in% cols]
+  suffix_used <- suffix[ifelse(endsWith(to_coalesce, suffix[1]), 1, 2)]
+  # remove suffixes and deduplicate
+  to_coalesce <- unique(substr(
+    to_coalesce, 
+    1, 
+    nchar(to_coalesce) - nchar(suffix_used)
+  ))
+  
+  coalesced <- purrr::map_dfc(to_coalesce, ~dplyr::coalesce(
+    joined[[paste0(.x, suffix[1])]], 
+    joined[[paste0(.x, suffix[2])]]
+  ))
+  names(coalesced) <- to_coalesce
+  
+  dplyr::bind_cols(joined, coalesced)[cols]
+}
 
-syndromes_count_mal_only = bm_mgen_su_dset %>% 
+##formatting the data types appropriately bfore merging
+bm_mgen_su_dset = bm_mgen_su_dset %>%
+  mutate(dod = dmy(dod),
+         dob = dmy(dob),
+         doa = dmy(doa))
+
+
+#merging and counting strict syndromes
+bm_mgen_su_dset = read_dta("C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/malariagen_data_raw/gideon_thal_extra_clinical_data/1995_2020_severe_malaria.dta") %>% 
+  mutate(serialno = as.character(serialno),
+         dss = as.character(dss),
+         sex = as.character(sex),
+         ethnic = as.character(ethnic)) %>%
+  rename(Kenyan_ID = serialno) %>%
+  coalesce_join(bm_mgen_su_dset, ., by = 'Kenyan_ID')
+  # select(c("iid", "bacterium1", "bacterium2", "bacterium3","gram_pos", "strep_pneumo","staph_aureus","grp_a_strep","grp_b_strep", "nts", "gp_other", "h_flu", "h_fluB", "h_flu_other", "acineto", "pseudomonas", "klebs", "gn_other", "dx1", "dx2", "dx3")) %>%
+  # mutate(resp_distress_gn = na_if(resp_distress, "0"),
+  #        rd_su_gn = coalesce(rd, resp_distress_gn))
+
+ syndromes_count_mal_only = bm_mgen_su_dset %>% 
   count(case, cm, sma, rd, rd_su_gn, resp_distress_gn, sma_not_cm_rd, not_cm_sma_rd, any_cm_sma_rd, cm_sma_rd, cm_not_sma_rd, sma_not_cm_rd, rd_not_cm_sma, cm_and_sma_not_rd, cm_and_rd_not_sma, sma_and_rd_not_cm, not_cm, not_sma, not_rd)
 
 ##dataset for James with individuals missing the different syndromes
@@ -146,10 +181,10 @@ bm_mgen_su_dset = bm_mgen_su_dset %>%
   left_join(bm_mgen_su_dset, ., by = "Kenyan_ID")
 
 
-write.csv(bm_mgen_su_dset[,c("Kenyan_ID", "Kenyan_ID_raw", "IID", "cc_status", "mal_sub_status","bact_sub_status", "Study", "case", "any_cm_sma_rd", "resp_distress_gn", "exclsv_syndromes", "prostration", "severe_malaria_anaemia", "cerebral_malaria", "respiratory_distress", "anaemia", "resp_distress", "severe_malaria", "c_malaria", "thall_type", "diag1", "diag2", "dx1", "dx2", "dx3", "bacterium1", "bacterium2", "bacterium3", "gram_pos", "strep_pneumo", "staph_aureus", "grp_a_strep", "grp_b_strep", "nts", "gp_other", "h_flu", "h_fluB", "h_flu_other", "acineto", "pseudomonas", "klebs", "gn_other")], "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/bact_mal/bm_mgen_pheno_7831.csv", quote = F, row.names = F) 
+write.csv(bm_mgen_su_dset[,c("Kenyan_ID", "Kenyan_ID_raw", "IID", "cc_status", "mal_sub_status","bact_sub_status", "Study", "case", "any_cm_sma_rd", "resp_distress_gn", "exclsv_syndromes", "prostration", "severe_malaria_anaemia", "cerebral_malaria", "respiratory_distress", "severe_malaria", "c_malaria", "thall_type", "diag1", "diag2", "dx1", "dx2", "dx3", "bacterium1", "bacterium2", "bacterium3", "gram_pos", "strep_pneumo", "staph_aureus", "grp_a_strep", "grp_b_strep", "nts", "gp_other", "h_flu", "h_fluB", "h_flu_other", "acineto", "pseudomonas", "klebs", "gn_other")], "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/bact_mal/bm_mgen_pheno_7831.csv", quote = F, row.names = F) 
 
 ##writing out individuals with missing cc_status
-write.csv(bm_mgen_su_dset[is.na(bm_mgen_su_dset[,"cc_status"]),c("Kenyan_ID", "Kenyan_ID_raw", "IID", "cc_status", "mal_sub_status", "bact_sub_status", "Study", "case", "any_cm_sma_rd", "resp_distress_gn", "exclsv_syndromes", "prostration", "severe_malaria_anaemia", "cerebral_malaria", "respiratory_distress", "anaemia", "resp_distress", "severe_malaria", "c_malaria", "thall_type", "diag1", "diag2", "dx1", "dx2", "dx3", "bacterium1", "bacterium2", "bacterium3", "gram_pos", "strep_pneumo", "staph_aureus", "grp_a_strep", "grp_b_strep", "nts", "gp_other", "h_flu", "h_fluB", "h_flu_other", "acineto", "pseudomonas", "klebs", "gn_other")], "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/bact_mal/bm_mgen_pheno_230_missing_cc_status.csv", quote = F, row.names = F) 
+write.csv(bm_mgen_su_dset[is.na(bm_mgen_su_dset[,"cc_status"]),c("Kenyan_ID", "Kenyan_ID_raw", "IID", "cc_status", "mal_sub_status", "bact_sub_status", "Study", "case", "any_cm_sma_rd", "resp_distress_gn", "exclsv_syndromes", "prostration", "severe_malaria_anaemia", "cerebral_malaria", "respiratory_distress", "severe_malaria", "c_malaria", "thall_type", "diag1", "diag2", "dx1", "dx2", "dx3", "bacterium1", "bacterium2", "bacterium3", "gram_pos", "strep_pneumo", "staph_aureus", "grp_a_strep", "grp_b_strep", "nts", "gp_other", "h_flu", "h_fluB", "h_flu_other", "acineto", "pseudomonas", "klebs", "gn_other")], "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/bact_mal/bm_mgen_pheno_230_missing_cc_status.csv", quote = F, row.names = F) 
 
 ##writing out controls for Gideon to issue date of birth/recruitment
 write.csv(bm_mgen_su_dset[bm_mgen_su_dset[,"cc_status"] == "CONTROL" & !is.na(bm_mgen_su_dset[,"cc_status"]) ,c("Kenyan_ID", "IID", "cc_status", "Study", "case")] %>% distinct(Kenyan_ID, .keep_all = T), "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/bact_mal/bm_mgen_pheno_controls_dob.csv", quote = F, row.names = F) 
@@ -188,14 +223,14 @@ bm_su_mgen_cases = bm_su_mgen_cases %>%
 write.csv(bm_su_mgen_cases[,c("IID", "Kenyan_ID", "cm_sma_nonstrict", "exclsv_syndromes_all", "cm_mgen", "sma_mgen", "other_mgen", "cm_su", "sma_su", "other_su", "rd_su", "rd_gn", "missing_rd")], "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/bact_mal/bm_su_mgen_cases_with_missing_rd.csv", quote = F, row.names = F)
 
 ##read in syndromes from GN
-bm_mgen_gn_syndromes = read_dta("C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/malariagen_data_raw/gideon_thal_extra_clinical_data/1995_2020_severe_malaria.dta")
+# bm_mgen_gn_syndromes = read_dta("C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/malariagen_data_raw/gideon_thal_extra_clinical_data/1995_2020_severe_malaria.dta")
 
 
 ##removing individuals in the exclusion list and writing out the clean dataset
 bm_mgen_su_gwas = bm_mgen_su_dset[which(!(bm_mgen_su_dset[, "IID"] %in% mgen_exclusion_list)),]
 
 write.csv(bm_mgen_su_gwas, "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/bact_mal/bm_mgen_su_dset_minus_those_in_excln_list.csv", quote = F, row.names = F)
-write.csv(bm_mgen_su_gwas[,c("Kenyan_ID", "Kenyan_ID_raw", "IID", "cc_status", "mal_sub_status", "bact_sub_status", "Study", "case", "any_cm_sma_rd", "resp_distress_gn", "exclsv_syndromes", "prostration", "severe_malaria_anaemia", "cerebral_malaria", "respiratory_distress", "anaemia", "resp_distress", "severe_malaria", "c_malaria", "thall_type", "diag1", "diag2", "dx1", "dx2", "dx3", "bacterium1", "bacterium2", "bacterium3", "gram_pos", "strep_pneumo", "staph_aureus", "grp_a_strep", "grp_b_strep", "nts", "gp_other", "h_flu", "h_fluB", "h_flu_other", "acineto", "pseudomonas", "klebs", "gn_other")], "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/bact_mal/bm_mgen_pheno_5456.csv", quote = F, row.names = F) 
+write.csv(bm_mgen_su_gwas[,c("Kenyan_ID", "Kenyan_ID_raw", "IID", "cc_status", "mal_sub_status", "bact_sub_status", "Study", "case", "any_cm_sma_rd", "resp_distress_gn", "exclsv_syndromes", "prostration", "severe_malaria_anaemia", "cerebral_malaria", "respiratory_distress", "severe_malaria", "c_malaria", "thall_type", "diag1", "diag2", "dx1", "dx2", "dx3", "bacterium1", "bacterium2", "bacterium3", "gram_pos", "strep_pneumo", "staph_aureus", "grp_a_strep", "grp_b_strep", "nts", "gp_other", "h_flu", "h_fluB", "h_flu_other", "acineto", "pseudomonas", "klebs", "gn_other")], "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/bact_mal/bm_mgen_pheno_5456.csv", quote = F, row.names = F) 
 
 ##reading in bactaeremia cases
 jg_additional_pheno_request = read.csv("C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/malariagen_data_raw/JG 17102019/additional_pheno_data.csv", stringsAsFactors = F, na.strings = c("NA", "", ".", "<NA>", "NO RESULTS"))
@@ -210,7 +245,7 @@ colnames(bm_mgen_gtypes_matrix)[1] = "IID"
 ##merging genotypes to phenotypes
 bm_mgen_su_gwas_genopheno = merge(bm_mgen_su_gwas, bm_mgen_gtypes_matrix, by = "IID", all.x = T)
 
-bm_mgen_su_gwas_genopheno = bm_mgen_su_gwas_genopheno[,c("IID", "Kenyan_ID", "FID", "Missing", "SEX", "cc_status", "PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PLATFORM", "mal_sub_status", "bact_sub_status", "cc_status_bact", "cc_status_mal", "mal_sub_status_sma", "mal_sub_status_cm", "mal_sub_status_both", "mal_sub_status_other", "mal_sub_status_bact", "bact_sub_status_aci", "bact_sub_status_bhs", "bact_sub_status_ecoli", "bact_sub_status_hib", "bact_sub_status_mal", "bact_sub_status_nts", "bact_sub_status_pneumo", "bact_sub_status_staph", "Oxford_ID", "Study", "missing_kenyanid", "Kenyan_ID_raw", "serial", "doa", "wbc", "rbc", "mps_100_wbc", "mps_500_rbc", "parasite_gn", "sample_code", "source_code_old", "agemths", "ageyr", "sex", "dob", "ethnicity", "ethnic", "loc_dss", "dss", "case", "died", "cm", "sma", "rd", "not_cm_sma_rd", "any_cm_sma_rd", "cm_sma_rd", "cm_not_sma_rd", "sma_not_cm_rd", "rd_not_cm_sma", "cm_and_sma_not_rd", "cm_and_rd_not_sma", "sma_and_rd_not_cm", "not_cm", "not_sma", "not_rd", "slide_pos", "bcstot", "prostration", "severe_malaria_anaemia", "cerebral_malaria", "respiratory_distress", "bpd", "bps", "pul_hrate", "crefill", "tempaxil", "oxysat", "fontanelle", "spleen", "muac", "height", "weight", "glucose", "dod", "diag1", "diag2", "hb", "hco3", "hct", "creat", "platelet", "mcv", "baseexc", "k", "na", "logpf_mcl", "phenotypic_bldgrp", "thall_type", "hbb_rs334", "g6pd_rs1050828", "g6pd_rs1050829", "inDSS", "cr1_rs17047660",  "cr1_rs17047661", "abo_rs8176719", "abo_rs8176746", "thal_gene", "thal_results", "bacterium1", "bacterium2", "bacterium3", "gram_pos", "strep_pneumo", "staph_aureus", "grp_a_strep", "grp_b_strep", "nts", "gp_other", "h_flu", "h_fluB", "h_flu_other", "acineto", "pseudomonas", "klebs", "gn_other", "anaemia", "resp_distress", "resp_irregular", "resp_rate", "resp_deep", "severe_malaria", "u_malaria", "c_malaria", "ad_anaemia", "ad_fever", "ad_malaria", "dx1", "dx2", "dx3", "resp_distress_gn", "rd_su_gn", "exclsv_syndromes", "rs480133:C", "rs601338:A", "rs8176719:TC", "rs8176746:T")]
+bm_mgen_su_gwas_genopheno = bm_mgen_su_gwas_genopheno[,c("IID", "Kenyan_ID", "Missing", "SEX", "cc_status", "PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PLATFORM", "mal_sub_status", "bact_sub_status", "cc_status_bact", "cc_status_mal", "mal_sub_status_sma", "mal_sub_status_cm", "mal_sub_status_both", "mal_sub_status_other", "mal_sub_status_bact", "bact_sub_status_aci", "bact_sub_status_bhs", "bact_sub_status_ecoli", "bact_sub_status_hib", "bact_sub_status_mal", "bact_sub_status_nts", "bact_sub_status_pneumo", "bact_sub_status_staph", "Oxford_ID", "Study", "missing_kenyanid", "Kenyan_ID_raw", "serial", "doa", "wbc", "rbc", "mps_100_wbc", "mps_500_rbc", "parasite_gn", "sample_code", "source_code_old", "agemths", "ageyr", "sex", "dob", "ethnicity", "ethnic", "loc_dss", "dss", "case", "died", "cm", "sma", "rd", "not_cm_sma_rd", "any_cm_sma_rd", "cm_sma_rd", "cm_not_sma_rd", "sma_not_cm_rd", "rd_not_cm_sma", "cm_and_sma_not_rd", "cm_and_rd_not_sma", "sma_and_rd_not_cm", "not_cm", "not_sma", "not_rd", "slide_pos", "bcstot", "prostration", "severe_malaria_anaemia", "cerebral_malaria", "respiratory_distress", "bpd", "bps", "pul_hrate", "crefill", "tempaxil", "oxysat", "fontanelle", "spleen", "muac", "height", "weight", "glucose", "dod", "diag1", "diag2", "hb", "hco3", "hct", "creat", "platelet", "mcv", "baseexc", "k", "na", "logpf_mcl", "phenotypic_bldgrp", "thall_type", "hbb_rs334", "g6pd_rs1050828", "g6pd_rs1050829", "inDSS", "cr1_rs17047660",  "cr1_rs17047661", "abo_rs8176719", "abo_rs8176746", "thal_gene", "thal_results", "bacterium1", "bacterium2", "bacterium3", "gram_pos", "strep_pneumo", "staph_aureus", "grp_a_strep", "grp_b_strep", "nts", "gp_other", "h_flu", "h_fluB", "h_flu_other", "acineto", "pseudomonas", "klebs", "gn_other", "dx1", "dx2", "dx3", "resp_distress_gn", "rd_su_gn", "exclsv_syndromes", "rs480133:C", "rs601338:A", "rs8176719:TC", "rs8176746:T")]
 
 ##incorporating sickle genotypes
 bm_mgen_su_gwas_genopheno = read_csv("C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/JRWT Study data/Rotavirus cases/JG controls ethnicity and rs334 data/bacteraemia_for_JR.sample.csv") %>%
@@ -369,17 +404,12 @@ tbl_demog = tbl_merge(list(tbl_cases, tbl_ctrls),tab_spanner = c("Cases", "Contr
   bold(bold = TRUE, part = "header")
 
 
-#bact_syndromes_count_jg = KG_bact_mal_adtnl_ptypes.ABO_FUT2_FUT3_dosages.sample[which(!(KG_bact_mal_adtnl_ptypes.ABO_FUT2_FUT3_dosages.sample  [, "ID_2"] %in% malariagen_exclusion_list)) ,] %>% filter(!is.na(phenotypic_bldgrp) & !is.na(rs334_all) & cc_status != "D"  ) %>%count(cc_status, mal_sub_status_all_cm, cm, sma, rd, sma_not_cm_rd, not_cm_sma_rd, any_cm_sma_rd, cm_sma_rd, cm_not_sma_rd, sma_not_cm_rd, rd_not_cm_sma, cm_and_sma_not_rd, cm_and_rd_not_sma, sma_and_rd_not_cm, not_cm, not_sma, not_rd)
-#write.csv(bact_syndromes_count_jg, "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/malariagen_results/bact_syndromes_count_jg.csv", quote = F, row.names = F)
-
 ##checking whether all of the subsyndromes are in the case vector and outsheeting a file with severe malaria cases that are lacking in su dset but occur in jg dset
 for (i in 1:length(bact_syndromes)){
   print(table(bm_genopheno[,bact_syndromes[i]]))
   print(table(bm_genopheno[!is.na(bm_genopheno[,bact_syndromes[i]]) & bm_genopheno[,bact_syndromes[i]] == 1 ,bact_syndromes[i]] == bm_genopheno[!is.na(bm_genopheno[,bact_syndromes[i]]) & bm_genopheno[,bact_syndromes[i]] == 1, "cc_status_mal"]))
   
 }
-
-
 
 ##ANALYSIS
 ##Univariate analysis
@@ -456,8 +486,6 @@ counts_with_O_nonO = bm_genopheno %>% filter(!is.na(cc_status) & !is.na(non_OvsO
 write.csv(counts_with_O_nonO, "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/bact_mal/bm_counts/counts_with_O_nonO.csv", quote = F, row.names = F)
 
 ##rs601338
-#sm_sujg_rs344_secretor_counts = bm_genopheno %>% filter(!is.na(cm_sma_nonstrict) & !is.na(sickle) &!is.na(secretor_status) & !is.na(PC1) & !is.na(thall_type)) %>% count(cm_sma_nonstrict, mal_sub_status_all_cm, cm_not_sma_rd, mal_sub_status_cm, mal_sub_status_all_sma,  mal_sub_status_sma,   mal_sub_status_both, mal_sub_status_other, cm_not_sma_rd)
-#write.csv(sm_sujg_rs344_secretor_counts, "C:/Users/Jesse Rop/OneDrive - Kemri Wellcome Trust/WT 18 month project/malariagen_analysis/bact_mal/bm_counts/sm_sujg_rs344_secretor_counts.csv", quote = F, row.names = F)
 
 sink("bact_logistic_regression_rs601338_everyone.txt")
 snp_log_rgrsn_everyone(predctr = "secretor_status")
